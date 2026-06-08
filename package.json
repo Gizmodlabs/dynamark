@@ -1,0 +1,67 @@
+{
+  "name": "dynamark",
+  "version": "2.0.0",
+  "description": "A modern DynamoDB migration CLI for TypeScript and JavaScript projects.",
+  "type": "module",
+  "main": "./build/src/lib/dynamark.js",
+  "types": "./build/src/lib/dynamark.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/src/lib/dynamark.d.ts",
+      "import": "./build/src/lib/dynamark.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "dynamark": "./build/src/bin/dynamark.js"
+  },
+  "scripts": {
+    "clean": "node -e \"fs.rmSync('build', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.json && cp -R src/templates build/src/templates",
+    "check-types": "tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "prepare": "npm run build"
+  },
+  "author": "Martin Patino <mpatino117@gmail.com>",
+  "license": "MIT",
+  "keywords": [
+    "dynamodb",
+    "migrations",
+    "database",
+    "data",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gizmodlabs/dynamark.git"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=10.0.0"
+  },
+  "preferGlobal": true,
+  "files": [
+    "build/**/*"
+  ],
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1064.0",
+    "@aws-sdk/credential-provider-ini": "^3.972.51",
+    "cli-table3": "^0.6.5",
+    "commander": "^15.0.0",
+    "tsx": "^4.22.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.16",
+    "@types/node": "^24.13.1",
+    "@types/sinon": "^21.0.1",
+    "@vitest/coverage-v8": "^4.1.8",
+    "dynalite": "^4.0.0",
+    "sinon": "^22.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

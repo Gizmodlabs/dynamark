@@ -1,0 +1,36 @@
+import { existsSync, readdirSync } from "node:fs";
+import path from "node:path";
+
+import { getFileLoader, loadMigrationsDir } from "./config.js";
+
+export const DEFAULT_MIGRATIONS_DIR_NAME = "migrations";
+
+export function resolveMigrationsDirPath() {
+  const configuredMigrationsDir = loadMigrationsDir();
+  if (path.isAbsolute(configuredMigrationsDir)) {
+    return configuredMigrationsDir;
+  }
+
+  return path.join(process.cwd(), configuredMigrationsDir);
+}
+
+export function isMigrationDirPresent() {
+  return existsSync(resolveMigrationsDirPath());
+}
+
+export function getFileNamesInMigrationFolder() {
+  const migrationsDir = resolveMigrationsDirPath();
+  if (!isMigrationDirPresent()) {
+    throw new Error("Please ensure migrations directory as specified in config.json is present");
+  }
+
+  return readdirSync(migrationsDir).sort();
+}
+
+export async function loadFilesToBeMigrated(fileName: string) {
+  if (!isMigrationDirPresent()) {
+    throw new Error("Please ensure migrations directory as specified in config.json is present");
+  }
+
+  return getFileLoader().loadMigrationFile(path.join(resolveMigrationsDirPath(), fileName));
+}

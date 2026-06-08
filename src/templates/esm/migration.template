@@ -1,0 +1,7 @@
+export async function up(ddb) {
+  // TODO write your migration here.
+}
+
+export async function down(ddb) {
+  // TODO write the statements to rollback your migration.
+}

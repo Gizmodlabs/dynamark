@@ -1,0 +1,9 @@
+import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+
+export async function up(ddb: DynamoDBClient): Promise<void> {
+  // TODO write your migration here.
+}
+
+export async function down(ddb: DynamoDBClient): Promise<void> {
+  // TODO write the statements to rollback your migration.
+}

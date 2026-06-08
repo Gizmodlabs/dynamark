@@ -1,6 +1,6 @@
 {
   "name": "dynamark",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "A modern DynamoDB migration CLI for TypeScript and JavaScript projects.",
   "type": "module",
   "main": "./build/src/lib/dynamark.js",

@@ -4,7 +4,7 @@ import { Option, program } from "commander";
 
 import { createAction, downAction, initAction, statusAction, upAction } from "../lib/dynamark.js";
 
-const VERSION = "2.0.0";
+const VERSION = "1.0.0";
 
 class MigrationError extends Error {
   migrated?: string[];

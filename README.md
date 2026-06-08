@@ -2,7 +2,7 @@
 
 `dynamark` is a DynamoDB data migration CLI for TypeScript and JavaScript projects.
 
-It is a modernized successor to `dynamo-data-migrations`: Node 24+, AWS SDK for JavaScript v3, `dynamark.config.json`, runtime config validation, Vite builds, and Vitest coverage.
+This v1 release uses Node 24+, AWS SDK for JavaScript v3, `dynamark.config.json`, runtime config validation, Vite builds, and Vitest coverage.
 
 ## Install the CLI
 
@@ -184,4 +184,3 @@ The Docker smoke test owns and resets `DYNAMARK_LOCAL_TEST` and `MIGRATIONS_LOG_
 ## Docs
 
 - [Architecture](docs/architecture.md)
-- [Migrating from dynamo-data-migrations](docs/migrating-from-dynamo-data-migrations.md)

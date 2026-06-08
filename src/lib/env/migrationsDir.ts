@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { getFileLoader, loadMigrationsDir } from "./config.js";
+import { configFileName } from "./paths.js";
 
 export const DEFAULT_MIGRATIONS_DIR_NAME = "migrations";
 
@@ -21,7 +22,9 @@ export function isMigrationDirPresent() {
 export function getFileNamesInMigrationFolder() {
   const migrationsDir = resolveMigrationsDirPath();
   if (!isMigrationDirPresent()) {
-    throw new Error("Please ensure migrations directory as specified in config.json is present");
+    throw new Error(
+      `Please ensure migrations directory as specified in ${configFileName} is present`,
+    );
   }
 
   return readdirSync(migrationsDir).sort();
@@ -29,7 +32,9 @@ export function getFileNamesInMigrationFolder() {
 
 export async function loadFilesToBeMigrated(fileName: string) {
   if (!isMigrationDirPresent()) {
-    throw new Error("Please ensure migrations directory as specified in config.json is present");
+    throw new Error(
+      `Please ensure migrations directory as specified in ${configFileName} is present`,
+    );
   }
 
   return getFileLoader().loadMigrationFile(path.join(resolveMigrationsDirPath(), fileName));

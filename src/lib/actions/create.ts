@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { getFileLoader } from "../env/config.js";
 import { isMigrationDirPresent, resolveMigrationsDirPath } from "../env/migrationsDir.js";
+import { configFileName } from "../env/paths.js";
 
 export async function create(description: string) {
   if (!description) {
@@ -10,7 +11,9 @@ export async function create(description: string) {
   }
 
   if (!isMigrationDirPresent()) {
-    throw new Error("Please ensure migrations directory as specified in config.json is present");
+    throw new Error(
+      `Please ensure migrations directory as specified in ${configFileName} is present`,
+    );
   }
 
   const migrationsDirPath = resolveMigrationsDirPath();

@@ -79,7 +79,7 @@ describe("dynamark integration", () => {
 
 function writeConfig(migrationType: string, endpoint: string) {
   writeFileSync(
-    "config.json",
+    "dynamark.config.json",
     JSON.stringify({
       awsConfig: [
         {

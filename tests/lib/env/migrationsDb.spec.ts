@@ -85,7 +85,7 @@ describe("migrationsDb", () => {
   it("builds a DynamoDBClient from the selected config profile", async () => {
     await withTempCwd(async () => {
       writeFileSync(
-        "config.json",
+        "dynamark.config.json",
         JSON.stringify({
           awsConfig: [
             { profile: "", region: "us-east-1", accessKeyId: "default", secretAccessKey: "secret" },

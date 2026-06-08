@@ -38,7 +38,7 @@ describe("down", () => {
 
 function writeConfig() {
   writeFileSync(
-    "config.json",
+    "dynamark.config.json",
     JSON.stringify({
       awsConfig: [
         {

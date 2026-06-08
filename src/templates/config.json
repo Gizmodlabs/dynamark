@@ -2,12 +2,12 @@
   "awsConfig": [
     {
       "profile": "",
-      "region": "",
+      "region": "us-west-2",
       "endpoint": "",
       "accessKeyId": "",
       "secretAccessKey": ""
     }
   ],
   "migrationsDir": "migrations",
-  "migrationType": ""
+  "migrationType": "ts"
 }

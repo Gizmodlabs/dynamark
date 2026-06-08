@@ -15,14 +15,14 @@ const defaultConfig: DynamarkConfig = {
   awsConfig: [
     {
       profile: "",
-      region: "",
+      region: "us-west-2",
       endpoint: "",
       accessKeyId: "",
       secretAccessKey: "",
     },
   ],
   migrationsDir: "migrations",
-  migrationType: "",
+  migrationType: tsMigrationType,
 };
 
 const AwsProfileConfigSchema = z.object({
@@ -58,7 +58,7 @@ export function getFileLoader() {
       return new MjsFileLoader();
     default:
       throw new Error(
-        "Unsupported migration type in config.json. Ensure migration type is ts,cjs or mjs",
+        `Unsupported migration type in ${paths.configFileName}. Ensure migration type is ts,cjs or mjs`,
       );
   }
 }
@@ -78,13 +78,13 @@ export function loadConfig(): DynamarkConfig {
     parsed = JSON.parse(readFileSync(paths.targetConfigPath(), "utf8"));
   } catch {
     throw new Error(
-      "Unable to load config, ensure config.json file exists, if not initialize it with init command",
+      `Unable to load config, ensure ${paths.configFileName} file exists, if not initialize it with init command`,
     );
   }
 
   const result = DynamarkConfigSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`Invalid config.json: ${z.prettifyError(result.error)}`);
+    throw new Error(`Invalid ${paths.configFileName}: ${z.prettifyError(result.error)}`);
   }
 
   return result.data;

@@ -38,7 +38,9 @@ program
   .action(async () => {
     try {
       await initAction();
-      console.info("Initialization successful. Please edit the generated config.json file");
+      console.info(
+        "Initialization successful. Please edit the generated dynamark.config.json file",
+      );
     } catch (error) {
       console.error(error);
       process.exitCode = 1;

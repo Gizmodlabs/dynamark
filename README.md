@@ -2,42 +2,30 @@
 
 `dynamark` is a DynamoDB data migration CLI for TypeScript and JavaScript projects.
 
-It is a modernized successor to `dynamo-data-migrations`: Node 24 LTS, AWS SDK for JavaScript v3, ESM-first builds, runtime config validation, and clearer domain boundaries.
+It is a modernized successor to `dynamo-data-migrations`: Node 24+, AWS SDK for JavaScript v3, `dynamark.config.json`, runtime config validation, Vite builds, and Vitest coverage.
 
-## Install
+## Install the CLI
 
 ```bash
 npm install -g dynamark
 ```
 
-## Usage
-
 ```bash
-dynamark
+dynamark --help
 ```
 
-```text
-Usage: dynamark [options] [command]
-
-Options:
-  -V, --version         output the version number
-  -h, --help            display help for command
-
-Commands:
-  init                  initialize a new migration project
-  create [description]  create a new database migration with the provided description
-  up [options]          run all pending database migrations against a provided profile.
-  down [options]        undo the last applied database migration against a provided profile.
-  status [options]      print the changelog of the database against a provided profile
-```
-
-## Quick Start
+## Create a Migration Project
 
 ```bash
 dynamark init
 ```
 
-Edit `config.json`:
+`init` creates:
+
+- `dynamark.config.json`
+- `migrations/`
+
+The generated `dynamark.config.json` starts as:
 
 ```json
 {
@@ -55,69 +43,124 @@ Edit `config.json`:
 }
 ```
 
-Create and run a migration:
+For real AWS, leave `endpoint`, `accessKeyId`, and `secretAccessKey` blank if you want Dynamark to load credentials from the selected AWS profile.
+
+## Run Against DynamoDB Local
+
+Start DynamoDB Local:
 
 ```bash
-dynamark create add-customers-table
-dynamark up --profile default
-dynamark status
-dynamark down --shift 1
+docker run -d -p 8000:8000 --name local-dynamodb amazon/dynamodb-local
 ```
 
-## Migration Contract
+Set throwaway local credentials for AWS CLI calls:
 
-TypeScript migrations receive an AWS SDK v3 `DynamoDBClient`.
+```bash
+export AWS_ACCESS_KEY_ID=local
+export AWS_SECRET_ACCESS_KEY=local
+export AWS_DEFAULT_REGION=us-west-2
+```
+
+Create a local table you can use in a migration:
+
+```bash
+aws dynamodb create-table \
+  --table-name TestTable \
+  --attribute-definitions AttributeName=id,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --endpoint-url http://localhost:8000
+```
+
+Confirm DynamoDB Local is responding:
+
+```bash
+aws dynamodb list-tables --endpoint-url http://localhost:8000
+```
+
+Point `dynamark.config.json` at the local endpoint:
+
+```json
+{
+  "awsConfig": [
+    {
+      "profile": "",
+      "region": "us-west-2",
+      "endpoint": "http://localhost:8000",
+      "accessKeyId": "local",
+      "secretAccessKey": "local"
+    }
+  ],
+  "migrationsDir": "migrations",
+  "migrationType": "ts"
+}
+```
+
+## Run Migrations
+
+Create a migration:
+
+```bash
+dynamark create add-test-row
+```
+
+Example TypeScript migration:
 
 ```ts
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { PutItemCommand } from "@aws-sdk/client-dynamodb";
+import { DeleteItemCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
 
 export async function up(ddb: DynamoDBClient): Promise<void> {
   await ddb.send(
     new PutItemCommand({
-      TableName: "CUSTOMER",
+      TableName: "TestTable",
       Item: {
-        CUSTOMER_ID: { S: "customer-1" }
+        id: { S: "row-1" }
       }
     })
   );
 }
 
 export async function down(ddb: DynamoDBClient): Promise<void> {
-  // rollback here
+  await ddb.send(
+    new DeleteItemCommand({
+      TableName: "TestTable",
+      Key: {
+        id: { S: "row-1" }
+      }
+    })
+  );
 }
 ```
 
-Supported migration file types:
+Run and inspect migrations:
 
-- `ts`: TypeScript, loaded through the TypeScript loader strategy.
-- `mjs`: ESM JavaScript.
-- `cjs`: CommonJS JavaScript.
+```bash
+dynamark up
+dynamark status
+dynamark down --shift 1
+```
+
+`dynamark up` creates `MIGRATIONS_LOG_DB` automatically if it does not exist. That table stores the migration filename and applied timestamp.
 
 ## Runtime Flow
 
 ```mermaid
 flowchart LR
-  CLI[dynamark CLI] --> Config[config.json]
-  Config --> LoaderFactory[MigrationLoaderFactory]
-  Config --> ClientFactory[DynamoDbClientFactory]
-  LoaderFactory --> Loader[ts | mjs | cjs loader strategy]
-  ClientFactory --> DDB[DynamoDBClient]
-  Loader --> Runner[Migration runner]
-  DDB --> Runner
-  Runner --> Migration[Migration up/down]
-  Runner --> LogRepo[MigrationLogRepository]
-  LogRepo --> Table[(MIGRATIONS_LOG_DB)]
+  CLI["dynamark CLI"] --> Config["dynamark.config.json"]
+  Config --> Client["DynamoDBClient"]
+  Config --> Loader["Migration loader"]
+  Loader --> File["Migration file"]
+  Client --> Runner["Migration runner"]
+  File --> Runner
+  Runner --> Migration["up/down function"]
+  Runner --> LogRepo["Migration log repository"]
+  LogRepo --> LogTable[("MIGRATIONS_LOG_DB")]
 ```
 
-The migration log table uses DynamoDB on-demand billing (`PAY_PER_REQUEST`) so small or occasional migration runs do not require provisioned capacity planning.
+## Build and Test This Repo
 
-## Docs
-
-- [Architecture](docs/architecture.md)
-- [Migrating from dynamo-data-migrations](docs/migrating-from-dynamo-data-migrations.md)
-
-## Development
+Use Node 24+.
 
 ```bash
 npm install
@@ -127,8 +170,18 @@ npm run build
 npm run check
 ```
 
-Notes:
+The default test suite uses Vitest and an in-process Dynalite server for fast local and CI feedback.
 
-- Node 24+ is the supported runtime.
-- The local integration test starts Dynalite on `127.0.0.1`; restricted sandboxes may need network/listen approval.
-- Source references: [AWS SDK v3 migration guide](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/migrating.html), [DynamoDB on-demand capacity mode](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/on-demand-capacity-mode.html), [Node release schedule](https://github.com/nodejs/Release).
+To test against the Docker DynamoDB Local container on `localhost:8000`:
+
+```bash
+docker run -d -p 8000:8000 --name local-dynamodb amazon/dynamodb-local
+npm run test:local:dynamodb
+```
+
+The Docker smoke test owns and resets `DYNAMARK_LOCAL_TEST` and `MIGRATIONS_LOG_DB` inside DynamoDB Local.
+
+## Docs
+
+- [Architecture](docs/architecture.md)
+- [Migrating from dynamo-data-migrations](docs/migrating-from-dynamo-data-migrations.md)

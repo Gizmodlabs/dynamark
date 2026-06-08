@@ -17,9 +17,10 @@
   },
   "scripts": {
     "clean": "node -e \"fs.rmSync('build', { recursive: true, force: true })\"",
-    "build": "npm run clean && tsc -p tsconfig.json && cp -R src/templates build/src/templates",
+    "build": "npm run clean && vite build && tsc -p tsconfig.json --emitDeclarationOnly && cp -R src/templates build/src/templates && node scripts/restore-bin-shebang.mjs",
     "check-types": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run --coverage",
+    "test:local:dynamodb": "DYNAMARK_TEST_DDB_LOCAL=1 DYNAMARK_DDB_LOCAL_ENDPOINT=http://localhost:8000 vitest run tests/lib/integration/dynamodbLocal.spec.ts",
     "test:watch": "vitest",
     "check": "biome check .",
     "check:fix": "biome check --write .",
@@ -62,6 +63,7 @@
     "dynalite": "^4.0.0",
     "sinon": "^22.0.0",
     "typescript": "^6.0.3",
+    "vite": "^8.0.16",
     "vitest": "^4.1.8"
   }
 }

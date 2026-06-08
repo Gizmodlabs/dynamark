@@ -48,7 +48,7 @@ describe("migrationsDir", () => {
 
 function writeConfig(migrationsDir: string) {
   writeFileSync(
-    "config.json",
+    "dynamark.config.json",
     JSON.stringify({
       awsConfig: [{ profile: "", region: "us-west-2" }],
       migrationsDir,

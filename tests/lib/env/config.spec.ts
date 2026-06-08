@@ -10,19 +10,28 @@ describe("config", () => {
     await withTempCwd(() => {
       initializeConfig();
 
-      const configPath = path.join(process.cwd(), "config.json");
+      const configPath = path.join(process.cwd(), "dynamark.config.json");
       expect(existsSync(configPath)).toBe(true);
-      expect(JSON.parse(readFileSync(configPath, "utf8"))).toMatchObject({
+      expect(JSON.parse(readFileSync(configPath, "utf8"))).toEqual({
+        awsConfig: [
+          {
+            profile: "",
+            region: "us-west-2",
+            endpoint: "",
+            accessKeyId: "",
+            secretAccessKey: "",
+          },
+        ],
         migrationsDir: "migrations",
-        migrationType: "",
+        migrationType: "ts",
       });
     });
   });
 
-  it("loads the TypeScript migration loader from config.json", async () => {
+  it("loads the TypeScript migration loader from dynamark.config.json", async () => {
     await withTempCwd(() => {
       writeFileSync(
-        "config.json",
+        "dynamark.config.json",
         JSON.stringify({
           awsConfig: [{ profile: "", region: "us-west-2" }],
           migrationsDir: "migrations",
@@ -38,7 +47,7 @@ describe("config", () => {
   it("rejects unsupported migration types with a useful message", async () => {
     await withTempCwd(() => {
       writeFileSync(
-        "config.json",
+        "dynamark.config.json",
         JSON.stringify({
           awsConfig: [{ profile: "", region: "us-west-2" }],
           migrationsDir: "migrations",

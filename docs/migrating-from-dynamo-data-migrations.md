@@ -1,8 +1,8 @@
-# Migrating From dynamo-data-migrations
+# Migrate From dynamo-data-migrations
 
 `dynamark` is a breaking modernization. It does not keep the old CLI alias or AWS SDK v2 migration API.
 
-## CLI Changes
+## Rename CLI Commands
 
 ```bash
 # old
@@ -16,7 +16,7 @@ dynamark create add_customer
 dynamark up --profile dev
 ```
 
-## Package Changes
+## Update Package Runtime
 
 ```json
 {
@@ -30,7 +30,7 @@ dynamark up --profile dev
 
 The supported runtime is Node 24+.
 
-## Migration API Changes
+## Replace AWS SDK v2 Calls
 
 Old migrations received `AWS.DynamoDB` from the AWS SDK v2 monolith.
 
@@ -67,17 +67,17 @@ export async function up(ddb: DynamoDBClient): Promise<void> {
 }
 ```
 
-## Config Changes
+## Move Config To dynamark.config.json
 
-`endpoint` is now supported per profile for local DynamoDB-compatible services like Dynalite.
+`dynamark` reads `dynamark.config.json`. `endpoint` is supported per profile for local DynamoDB-compatible services like Docker DynamoDB Local.
 
 ```json
 {
   "awsConfig": [
     {
-      "profile": "local",
-      "region": "local",
-      "endpoint": "http://127.0.0.1:4567",
+      "profile": "",
+      "region": "us-west-2",
+      "endpoint": "http://localhost:8000",
       "accessKeyId": "local",
       "secretAccessKey": "local"
     }
@@ -89,15 +89,15 @@ export async function up(ddb: DynamoDBClient): Promise<void> {
 
 If `accessKeyId` and `secretAccessKey` are omitted, `dynamark` loads credentials from the shared AWS credentials file for the selected profile.
 
-## Migration Flow
+## Old API -> New API
 
 ```mermaid
 flowchart LR
-  OldCLI[dynamo-data-migrations] --> OldSDK[AWS SDK v2 AWS.DynamoDB]
-  OldSDK --> OldPromise[putItem(params).promise]
+  OldCLI["dynamo-data-migrations"] --> OldSDK["AWS SDK v2 AWS.DynamoDB"]
+  OldSDK --> OldPromise["putItem(params).promise"]
 
-  NewCLI[dynamark] --> NewSDK[AWS SDK v3 DynamoDBClient]
-  NewSDK --> NewCommand[ddb.send(new PutItemCommand(params))]
+  NewCLI["dynamark"] --> NewSDK["AWS SDK v3 DynamoDBClient"]
+  NewSDK --> NewCommand["ddb.send(new PutItemCommand(params))"]
 ```
 
 ## Checklist
@@ -106,5 +106,6 @@ flowchart LR
 - Install AWS SDK v3 command imports in migration files.
 - Change `AWS.DynamoDB` types to `DynamoDBClient`.
 - Replace `.promise()` calls with `ddb.send(new SomeCommand(params))`.
+- Rename project config to `dynamark.config.json`.
 - Set `migrationType` to `ts`, `mjs`, or `cjs`.
 - Run `dynamark status` against a safe environment before applying migrations.

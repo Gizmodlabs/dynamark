@@ -1,62 +1,35 @@
 # Dynamark Architecture
 
-`dynamark` keeps the domain small: a CLI reads migration config, loads ordered migration files, runs each migration against DynamoDB, and records applied files in `MIGRATIONS_LOG_DB`.
+`dynamark` has one job: run ordered migration files against DynamoDB and record what ran in `MIGRATIONS_LOG_DB`.
 
-## Component View
+## Runtime Model
 
 ```mermaid
 flowchart TB
-  subgraph CLI["Command pattern"]
-    Init[init]
-    Create[create]
-    Up[up]
-    Down[down]
-    Status[status]
-  end
-
-  subgraph Config["Validated config boundary"]
-    ConfigJson[config.json]
-    ConfigLoader[Config loader]
-    ClientFactory[DynamoDbClientFactory]
-    LoaderFactory[MigrationLoaderFactory]
-  end
-
-  subgraph Loading["Strategy pattern"]
-    TsLoader[TypeScript loader]
-    MjsLoader[ESM loader]
-    CjsLoader[CJS loader]
-  end
-
-  subgraph Runtime["Template Method style runner"]
-    OrderedFiles[Ordered migration files]
-    Migration[Migration up/down]
-    Runner[Runner]
-  end
-
-  subgraph Storage["Repository/Adapter pattern"]
-    LogRepo[MigrationLogRepository]
-    LogTable[(MIGRATIONS_LOG_DB)]
-  end
-
-  Init --> ConfigJson
-  Create --> ConfigLoader
-  Up --> ConfigLoader
-  Down --> ConfigLoader
-  Status --> ConfigLoader
-  ConfigLoader --> ClientFactory
-  ConfigLoader --> LoaderFactory
-  LoaderFactory --> TsLoader
-  LoaderFactory --> MjsLoader
-  LoaderFactory --> CjsLoader
-  TsLoader --> OrderedFiles
-  MjsLoader --> OrderedFiles
-  CjsLoader --> OrderedFiles
-  ClientFactory --> Runner
-  OrderedFiles --> Runner
-  Runner --> Migration
-  Runner --> LogRepo
-  LogRepo --> LogTable
+  User["User runs dynamark"] --> CLI["CLI command"]
+  CLI --> Config["Load dynamark.config.json"]
+  Config --> Profile["Select AWS profile"]
+  Profile --> Client["Create DynamoDBClient"]
+  Config --> Directory["Resolve migrations directory"]
+  Directory --> Files["Sort migration files"]
+  Config --> Loader["Choose loader: ts, mjs, or cjs"]
+  Files --> Loader
+  Loader --> Migration["Import migration module"]
+  Client --> Runner["Run migration"]
+  Migration --> Runner
+  Runner --> LogRepo["MigrationLogRepository"]
+  LogRepo --> LogTable[("MIGRATIONS_LOG_DB")]
 ```
+
+## Config Boundary
+
+`dynamark.config.json` is the project-level control point:
+
+- `awsConfig` selects region, optional endpoint, and credentials.
+- `migrationsDir` tells Dynamark where migration files live.
+- `migrationType` chooses the loader strategy: `ts`, `mjs`, or `cjs`.
+
+Local DynamoDB works by setting `endpoint` to `http://localhost:8000` and using throwaway credentials. Real AWS usage leaves `endpoint` blank and can load credentials from the shared AWS profile.
 
 ## Up Flow
 
@@ -64,25 +37,25 @@ flowchart TB
 sequenceDiagram
   participant User
   participant CLI as dynamark up
-  participant Config as Config loader
+  participant Config as dynamark.config.json
   participant DDB as DynamoDBClient
   participant Repo as MigrationLogRepository
-  participant Loader as MigrationLoaderStrategy
+  participant Loader as MigrationLoader
   participant Migration
 
-  User->>CLI: dynamark up --profile dev
-  CLI->>Config: load config.json
-  Config->>DDB: build client for profile
-  CLI->>Repo: does MIGRATIONS_LOG_DB exist?
-  alt table missing
+  User->>CLI: dynamark up
+  CLI->>Config: load config
+  Config->>DDB: create client
+  CLI->>Repo: check MIGRATIONS_LOG_DB
+  alt migration log table missing
     Repo->>DDB: CreateTable PAY_PER_REQUEST
-    Repo->>DDB: wait until active
+    Repo->>DDB: wait until ACTIVE
   end
-  CLI->>Repo: list applied migrations
-  CLI->>Loader: load pending migration file
-  Loader->>Migration: import up/down module
+  CLI->>Repo: read applied migrations
+  CLI->>Loader: import pending file
+  Loader->>Migration: expose up/down functions
   CLI->>Migration: up(ddb)
-  CLI->>Repo: add migration log row
+  CLI->>Repo: write migration log row
 ```
 
 ## Down Flow
@@ -92,26 +65,35 @@ sequenceDiagram
   participant User
   participant CLI as dynamark down
   participant Repo as MigrationLogRepository
-  participant Loader as MigrationLoaderStrategy
+  participant Loader as MigrationLoader
   participant Migration
 
-  User->>CLI: dynamark down --shift 2
-  CLI->>Repo: list applied migrations
-  CLI->>CLI: select latest applied files in reverse order
-  loop each selected migration
-    CLI->>Loader: load migration file
-    Loader->>Migration: import up/down module
+  User->>CLI: dynamark down --shift 1
+  CLI->>Repo: read applied migrations
+  CLI->>CLI: select latest files in reverse order
+  loop selected migrations
+    CLI->>Loader: import migration file
+    Loader->>Migration: expose down function
     CLI->>Migration: down(ddb)
     CLI->>Repo: delete migration log row
   end
 ```
 
-## Patterns
+## Local Test Loop
 
-- `Command`: each CLI command maps to one small action module.
-- `Strategy`: `ts`, `mjs`, and `cjs` migration loaders share the same interface.
-- `Factory`: config chooses the AWS client and migration loader.
-- `Repository/Adapter`: DynamoDB log table access lives in `MigrationLogRepository`.
-- `Template Method style`: `up` and `down` share the same high-level pipeline: resolve files -> load migration -> execute -> update log.
+```mermaid
+flowchart LR
+  Docker["amazon/dynamodb-local"] --> Endpoint["localhost:8000"]
+  Endpoint --> AwsCli["aws dynamodb list-tables"]
+  Endpoint --> Config["dynamark.config.json endpoint"]
+  Config --> Dynamark["dynamark up/status/down"]
+  Dynamark --> TestTable[("TestTable")]
+  Dynamark --> LogTable[("MIGRATIONS_LOG_DB")]
+```
 
-The point is debuggability. If migration loading fails, inspect the Strategy layer. If log writes fail, inspect the Repository layer. If AWS profile selection fails, inspect the Factory/config boundary.
+## Code Boundaries
+
+- CLI commands live in `src/bin/dynamark.ts` and call action functions.
+- Action functions own the user-visible workflows: `init`, `create`, `up`, `down`, and `status`.
+- Environment modules own config loading, DynamoDB client creation, migration directory lookup, and migration log storage.
+- File loaders keep runtime migration imports separate from the bundled CLI so user migration files still load from the project `migrations/` directory.

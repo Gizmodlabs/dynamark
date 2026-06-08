@@ -9,7 +9,7 @@ describe("create", () => {
     await withTempCwd(async () => {
       mkdirSync("migrations");
       writeFileSync(
-        "config.json",
+        "dynamark.config.json",
         JSON.stringify({
           awsConfig: [{ profile: "", region: "us-west-2" }],
           migrationsDir: "migrations",
@@ -27,7 +27,7 @@ describe("create", () => {
   it("fails when the configured migrations directory is missing", async () => {
     await withTempCwd(async () => {
       writeFileSync(
-        "config.json",
+        "dynamark.config.json",
         JSON.stringify({
           awsConfig: [{ profile: "", region: "us-west-2" }],
           migrationsDir: "migrations",

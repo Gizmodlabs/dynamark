@@ -9,5 +9,6 @@
     }
   ],
   "migrationsDir": "migrations",
-  "migrationType": "ts"
+  "migrationType": "ts",
+  "historyDir": "migrations/history"
 }

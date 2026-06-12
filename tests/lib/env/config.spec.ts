@@ -24,6 +24,7 @@ describe("config", () => {
         ],
         migrationsDir: "migrations",
         migrationType: "ts",
+        historyDir: "migrations/history",
       });
     });
   });

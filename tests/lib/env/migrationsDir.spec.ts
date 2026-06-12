@@ -29,6 +29,17 @@ describe("migrationsDir", () => {
     });
   });
 
+  it("ignores subdirectories such as the history folder when listing migrations", async () => {
+    await withTempCwd(() => {
+      writeConfig("migrations");
+      mkdirSync("migrations/history", { recursive: true });
+      writeFileSync("migrations/history/_journal.json", "{}");
+      writeFileSync("migrations/1-first.ts", "");
+
+      expect(getFileNamesInMigrationFolder()).toEqual(["1-first.ts"]);
+    });
+  });
+
   it("loads TypeScript migration files through the configured loader strategy", async () => {
     await withTempCwd(async () => {
       writeConfig("migrations");

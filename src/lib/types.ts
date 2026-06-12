@@ -12,6 +12,7 @@ export interface DynamarkConfig {
   awsConfig: AwsProfileConfig[];
   migrationsDir: string;
   migrationType: string;
+  historyDir?: string;
 }
 
 export interface Migration {
@@ -32,4 +33,26 @@ export interface MigrationLogItem {
 export interface RawMigrationLogItem {
   FILE_NAME?: string;
   APPLIED_AT?: string;
+}
+
+export type MigrationRunAction = "up" | "down";
+
+export type MigrationRunResult = "success" | "failed";
+
+export interface MigrationRunRecord {
+  idx: number;
+  runId: string;
+  action: MigrationRunAction;
+  profile: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  result: MigrationRunResult;
+  files: string[];
+  error?: string;
+}
+
+export interface HistoryJournal {
+  version: number;
+  entries: MigrationRunRecord[];
 }

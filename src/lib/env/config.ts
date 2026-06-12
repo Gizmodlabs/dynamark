@@ -23,6 +23,7 @@ const defaultConfig: DynamarkConfig = {
   ],
   migrationsDir: "migrations",
   migrationType: tsMigrationType,
+  historyDir: "migrations/history",
 };
 
 const AwsProfileConfigSchema = z.object({
@@ -37,6 +38,7 @@ const DynamarkConfigSchema = z.object({
   awsConfig: z.array(AwsProfileConfigSchema).default([]),
   migrationsDir: z.string().min(1, "migrationsDir is required"),
   migrationType: z.string().default(""),
+  historyDir: z.string().optional(),
 });
 
 export function isConfigFilePresent() {

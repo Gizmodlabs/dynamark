@@ -2,7 +2,15 @@
 import Table from "cli-table3";
 import { Option, program } from "commander";
 
-import { createAction, downAction, initAction, statusAction, upAction } from "../lib/dynamark.js";
+import {
+  createAction,
+  downAction,
+  historyAction,
+  initAction,
+  statusAction,
+  upAction,
+} from "../lib/dynamark.js";
+import type { MigrationRunRecord } from "../lib/types.js";
 
 const VERSION = "1.0.0";
 
@@ -20,6 +28,23 @@ function printMigrated(migrated: string[] = [], direction: string) {
 function printStatusTable(statusItems: { fileName: string; appliedAt: string }[]) {
   const table = new Table({ head: ["Filename", "Applied At"] });
   table.push(...statusItems.map((item) => Object.values(item)));
+  console.info(table.toString());
+}
+
+function printHistoryTable(runs: MigrationRunRecord[]) {
+  const table = new Table({
+    head: ["Run", "Action", "Result", "Files", "Profile", "Finished At"],
+  });
+  table.push(
+    ...runs.map((run) => [
+      run.runId,
+      run.action,
+      run.result,
+      run.files.length ? run.files.join("\n") : "-",
+      run.profile,
+      run.finishedAt,
+    ]),
+  );
   console.info(table.toString());
 }
 
@@ -104,6 +129,19 @@ program
     try {
       const statusItems = await statusAction(option.profile);
       printStatusTable(statusItems);
+    } catch (error) {
+      console.error(error);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("history")
+  .description("print the local file-based record of past migration runs")
+  .action(async () => {
+    try {
+      const runs = await historyAction();
+      printHistoryTable(runs);
     } catch (error) {
       console.error(error);
       process.exitCode = 1;

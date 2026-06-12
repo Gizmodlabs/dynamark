@@ -13,4 +13,14 @@ describe("dynamark bin", () => {
 
     expect(stdout.trim()).toBe("1.0.0");
   });
+
+  it("exposes the history command", async () => {
+    const tsxCli = path.join(process.cwd(), "node_modules/tsx/dist/cli.mjs");
+    const dynamarkBin = path.join(process.cwd(), "src/bin/dynamark.ts");
+
+    const { stdout } = await execFileAsync(process.execPath, [tsxCli, dynamarkBin, "--help"]);
+
+    expect(stdout).toContain("history");
+    expect(stdout).toContain("record of past migration runs");
+  });
 });

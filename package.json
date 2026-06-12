@@ -15,16 +15,23 @@
   "bin": {
     "dynamark": "./build/src/bin/dynamark.js"
   },
+  "packageManager": "pnpm@10.26.2",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "classic-level",
+      "esbuild"
+    ]
+  },
   "scripts": {
     "clean": "node -e \"fs.rmSync('build', { recursive: true, force: true })\"",
-    "build": "npm run clean && vite build && tsc -p tsconfig.json --emitDeclarationOnly && cp -R src/templates build/src/templates && node scripts/restore-bin-shebang.mjs",
+    "build": "pnpm run clean && vite build && tsc -p tsconfig.json --emitDeclarationOnly && cp -R src/templates build/src/templates && node scripts/restore-bin-shebang.mjs",
     "check-types": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run --coverage",
     "test:local:dynamodb": "DYNAMARK_TEST_DDB_LOCAL=1 DYNAMARK_DDB_LOCAL_ENDPOINT=http://localhost:8000 vitest run tests/lib/integration/dynamodbLocal.spec.ts",
     "test:watch": "vitest",
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "prepare": "npm run build"
+    "prepare": "pnpm run build"
   },
   "author": "Martin Patino <mpatino117@gmail.com>",
   "license": "MIT",
@@ -41,7 +48,7 @@
   },
   "engines": {
     "node": ">=24.0.0",
-    "npm": ">=10.0.0"
+    "pnpm": ">=10.0.0"
   },
   "preferGlobal": true,
   "files": [

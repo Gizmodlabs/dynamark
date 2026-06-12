@@ -1,4 +1,5 @@
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import * as historyDir from "../env/historyDir.js";
 import * as migrationsDb from "../env/migrationsDb.js";
 import * as migrationsDir from "../env/migrationsDir.js";
 import type { MigrationStatusItem } from "../types.js";
@@ -12,10 +13,34 @@ export async function down(profile = "default", downShift = 1) {
   const itemsToRollback = appliedItems
     .slice(-(downShift === 0 ? appliedItems.length : downShift))
     .reverse();
+  const startedAt = new Date();
 
   for (const item of itemsToRollback) {
-    await executeDown(ddb, item);
+    try {
+      await executeDown(ddb, item);
+    } catch (error_) {
+      const error = error_ as Error;
+      historyDir.recordRunSafely({
+        action: "down",
+        profile,
+        startedAt,
+        finishedAt: new Date(),
+        files: downgraded,
+        error,
+      });
+      throw error;
+    }
     downgraded.push(item.fileName);
+  }
+
+  if (downgraded.length > 0) {
+    historyDir.recordRunSafely({
+      action: "down",
+      profile,
+      startedAt,
+      finishedAt: new Date(),
+      files: downgraded,
+    });
   }
 
   return downgraded;

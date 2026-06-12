@@ -1,3 +1,4 @@
+import * as historyDir from "../env/historyDir.js";
 import * as migrationsDb from "../env/migrationsDb.js";
 import * as migrationsDir from "../env/migrationsDir.js";
 import type { MigrationStatusItem } from "../types.js";
@@ -16,9 +17,33 @@ export async function up(profile = "default") {
   const statusItems = await status(profile);
   const pendingItems = statusItems.filter((item) => item.appliedAt === "PENDING");
   const migrated: string[] = [];
+  const startedAt = new Date();
 
   for (const item of pendingItems) {
-    await migrateItem(item, migrated);
+    try {
+      await migrateItem(item, migrated);
+    } catch (error_) {
+      const error = error_ as Error;
+      historyDir.recordRunSafely({
+        action: "up",
+        profile,
+        startedAt,
+        finishedAt: new Date(),
+        files: migrated,
+        error,
+      });
+      throw error;
+    }
+  }
+
+  if (migrated.length > 0) {
+    historyDir.recordRunSafely({
+      action: "up",
+      profile,
+      startedAt,
+      finishedAt: new Date(),
+      files: migrated,
+    });
   }
 
   return migrated;

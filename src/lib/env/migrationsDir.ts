@@ -27,7 +27,10 @@ export function getFileNamesInMigrationFolder() {
     );
   }
 
-  return readdirSync(migrationsDir).sort();
+  return readdirSync(migrationsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .sort();
 }
 
 export async function loadFilesToBeMigrated(fileName: string) {

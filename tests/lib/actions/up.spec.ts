@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 
 import { up } from "../../../src/lib/actions/up.js";
+import * as historyDir from "../../../src/lib/env/historyDir.js";
 import * as migrationsDb from "../../../src/lib/env/migrationsDb.js";
 import { withTempCwd } from "../../helpers/tempCwd.js";
 
@@ -36,6 +37,85 @@ describe("up", () => {
         message: "Could not migrate up 2-fails.ts: boom",
         migrated: ["1-first.ts"],
       });
+
+      const runs = historyDir.listRuns();
+      expect(runs).toHaveLength(1);
+      expect(runs[0]).toMatchObject({
+        action: "up",
+        profile: "default",
+        result: "failed",
+        files: ["1-first.ts"],
+        error: "Could not migrate up 2-fails.ts: boom",
+      });
+    });
+  });
+
+  it("records a success history entry listing every migrated file", async () => {
+    await withTempCwd(async () => {
+      writeConfig();
+      mkdirSync("migrations");
+      writeFileSync(
+        "migrations/1-first.ts",
+        "export async function up() {} export async function down() {}",
+      );
+      writeFileSync(
+        "migrations/2-second.ts",
+        "export async function up() {} export async function down() {}",
+      );
+      vi.spyOn(migrationsDb, "getDdb").mockResolvedValue({} as DynamoDBClient);
+      vi.spyOn(migrationsDb, "doesMigrationsLogDbExists").mockResolvedValue(true);
+      vi.spyOn(migrationsDb, "getAllMigrations").mockResolvedValue([]);
+      vi.spyOn(migrationsDb, "addMigrationToMigrationsLogDb").mockResolvedValue({ $metadata: {} });
+
+      await expect(up()).resolves.toEqual(["1-first.ts", "2-second.ts"]);
+
+      const runs = historyDir.listRuns();
+      expect(runs).toHaveLength(1);
+      expect(runs[0]).toMatchObject({
+        idx: 1,
+        action: "up",
+        result: "success",
+        files: ["1-first.ts", "2-second.ts"],
+      });
+      expect(runs[0].runId).toMatch(/^0001_\d{8}T\d{9}Z_up$/);
+    });
+  });
+
+  it("does not record a history entry when there is nothing to migrate", async () => {
+    await withTempCwd(async () => {
+      writeConfig();
+      mkdirSync("migrations");
+      vi.spyOn(migrationsDb, "getDdb").mockResolvedValue({} as DynamoDBClient);
+      vi.spyOn(migrationsDb, "doesMigrationsLogDbExists").mockResolvedValue(true);
+      vi.spyOn(migrationsDb, "getAllMigrations").mockResolvedValue([]);
+
+      await expect(up()).resolves.toEqual([]);
+
+      expect(historyDir.listRuns()).toEqual([]);
+    });
+  });
+
+  it("still reports the migration result when history recording fails", async () => {
+    await withTempCwd(async () => {
+      writeConfig();
+      mkdirSync("migrations");
+      writeFileSync(
+        "migrations/1-first.ts",
+        "export async function up() {} export async function down() {}",
+      );
+      vi.spyOn(migrationsDb, "getDdb").mockResolvedValue({} as DynamoDBClient);
+      vi.spyOn(migrationsDb, "doesMigrationsLogDbExists").mockResolvedValue(true);
+      vi.spyOn(migrationsDb, "getAllMigrations").mockResolvedValue([]);
+      vi.spyOn(migrationsDb, "addMigrationToMigrationsLogDb").mockResolvedValue({ $metadata: {} });
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mkdirSync("migrations/history", { recursive: true });
+      writeFileSync("migrations/history/_journal.json", "{ not json");
+
+      await expect(up()).resolves.toEqual(["1-first.ts"]);
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("Could not record migration history"),
+      );
     });
   });
 });

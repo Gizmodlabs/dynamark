@@ -1,8 +1,13 @@
 # dynamark
 
+[![CI](https://github.com/Gizmodlabs/dynamark/actions/workflows/ci.yml/badge.svg)](https://github.com/Gizmodlabs/dynamark/actions/workflows/ci.yml)
+[![Node](https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&logoColor=white)](package.json)
+[![pnpm](https://img.shields.io/badge/pnpm-%3E%3D10-F69220?logo=pnpm&logoColor=white)](package.json)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 `dynamark` is a DynamoDB data migration CLI for TypeScript and JavaScript projects.
 
-This v1 release uses Node 24+, AWS SDK for JavaScript v3, `dynamark.config.json`, runtime config validation, Vite builds, and Vitest coverage.
+This v1 release uses Node 24+, pnpm, AWS SDK for JavaScript v3, `dynamark.config.json`, runtime config validation, Vite builds, and Vitest coverage.
 
 ## Install the CLI
 
@@ -39,7 +44,8 @@ The generated `dynamark.config.json` starts as:
     }
   ],
   "migrationsDir": "migrations",
-  "migrationType": "ts"
+  "migrationType": "ts",
+  "historyDir": "migrations/history"
 }
 ```
 
@@ -92,7 +98,8 @@ Point `dynamark.config.json` at the local endpoint:
     }
   ],
   "migrationsDir": "migrations",
-  "migrationType": "ts"
+  "migrationType": "ts",
+  "historyDir": "migrations/history"
 }
 ```
 
@@ -143,6 +150,33 @@ dynamark down --shift 1
 
 `dynamark up` creates `MIGRATIONS_LOG_DB` automatically if it does not exist. That table stores the migration filename and applied timestamp.
 
+## Migration Run History
+
+Every `up` and `down` run that touches at least one migration is recorded locally as files, similar to Drizzle's journal. The history directory defaults to `<migrationsDir>/history` and can be changed with `historyDir` in `dynamark.config.json`.
+
+Each run produces:
+
+- An entry appended to `_journal.json`, the index of all runs.
+- An immutable per-run file like `0001_20260612T100001250Z_up.json` containing the action, profile, files touched, timestamps, duration, result, and the error message when a run fails.
+
+Failed runs are recorded too, including the files that completed before the failure, so partial migrations leave an audit trail. History recording never breaks a migration run; if the journal cannot be written, Dynamark warns and continues.
+
+Inspect the history from the CLI:
+
+```bash
+dynamark history
+```
+
+Or programmatically (for example behind an HTTP endpoint):
+
+```ts
+import { historyAction } from "dynamark";
+
+const runs = await historyAction();
+```
+
+Commit the history directory to git to keep a reviewable, permanent record of what ran where and when.
+
 ## Runtime Flow
 
 ```mermaid
@@ -156,18 +190,21 @@ flowchart LR
   Runner --> Migration["up/down function"]
   Runner --> LogRepo["Migration log repository"]
   LogRepo --> LogTable[("MIGRATIONS_LOG_DB")]
+  Runner --> History["History recorder"]
+  History --> Journal[/"migrations/history/_journal.json"/]
+  History --> RunFile[/"migrations/history/0001_..._up.json"/]
 ```
 
 ## Build and Test This Repo
 
-Use Node 24+.
+Use Node 24+ and pnpm 10+.
 
 ```bash
-npm install
-npm run check-types
-npm test
-npm run build
-npm run check
+pnpm install
+pnpm run check-types
+pnpm test
+pnpm run build
+pnpm run check
 ```
 
 The default test suite uses Vitest and an in-process Dynalite server for fast local and CI feedback.
@@ -176,7 +213,7 @@ To test against the Docker DynamoDB Local container on `localhost:8000`:
 
 ```bash
 docker run -d -p 8000:8000 --name local-dynamodb amazon/dynamodb-local
-npm run test:local:dynamodb
+pnpm run test:local:dynamodb
 ```
 
 The Docker smoke test owns and resets `DYNAMARK_LOCAL_TEST` and `MIGRATIONS_LOG_DB` inside DynamoDB Local.

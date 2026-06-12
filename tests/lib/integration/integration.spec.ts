@@ -10,6 +10,7 @@ import {
 
 import { create } from "../../../src/lib/actions/create.js";
 import { down } from "../../../src/lib/actions/down.js";
+import { history } from "../../../src/lib/actions/history.js";
 import { init } from "../../../src/lib/actions/init.js";
 import { status } from "../../../src/lib/actions/status.js";
 import { up } from "../../../src/lib/actions/up.js";
@@ -73,6 +74,23 @@ describe("dynamark integration", () => {
 
       await expect(down("default", 0)).resolves.toEqual([second, first]);
       await expect(scanCustomerIds(ddb)).resolves.toEqual([]);
+
+      const runs = await history();
+      expect(runs).toHaveLength(2);
+      expect(runs[0]).toMatchObject({
+        idx: 1,
+        action: "up",
+        result: "success",
+        files: [first, second],
+      });
+      expect(runs[1]).toMatchObject({
+        idx: 2,
+        action: "down",
+        result: "success",
+        files: [second, first],
+      });
+      expect(runs[0].runId).toMatch(/^0001_\d{8}T\d{9}Z_up$/);
+      expect(runs[1].runId).toMatch(/^0002_\d{8}T\d{9}Z_down$/);
     });
   });
 });

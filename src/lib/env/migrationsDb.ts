@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   type AttributeValue,
   CreateTableCommand,
@@ -7,13 +8,15 @@ import {
   type DynamoDBClientConfig,
   PutItemCommand,
   ScanCommand,
+  UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
-import { fromIni } from "@aws-sdk/credential-provider-ini";
 
 import type { AwsProfileConfig, MigrationLogItem, RawMigrationLogItem } from "../types.js";
 import * as config from "./config.js";
 
 export const MIGRATIONS_LOG_TABLE_NAME = "MIGRATIONS_LOG_DB";
+export const MIGRATIONS_LOCK_KEY = "__DYNAMARK_LOCK__";
+export const MIGRATIONS_LOCK_LEASE_MS = 60_000;
 
 export async function getDdb(profile = "default") {
   const profileConfig = getProfileConfig(profile, config.loadAWSConfig());
@@ -35,8 +38,9 @@ export async function getDdb(profile = "default") {
       accessKeyId: profileConfig.accessKeyId,
       secretAccessKey: profileConfig.secretAccessKey,
     };
-  } else {
-    clientConfig.credentials = fromIni({ profile });
+  } else if (profile !== "default") {
+    // An explicit profile makes the SDK skip env var credentials, so only pass non-default ones.
+    clientConfig.profile = profile;
   }
 
   return new DynamoDBClient(clientConfig);
@@ -49,35 +53,41 @@ export class MigrationLogRepository {
   ) {}
 
   async createTable() {
-    await this.ddb.send(
-      new CreateTableCommand({
-        AttributeDefinitions: [
-          {
-            AttributeName: "FILE_NAME",
-            AttributeType: "S",
+    try {
+      await this.ddb.send(
+        new CreateTableCommand({
+          AttributeDefinitions: [
+            {
+              AttributeName: "FILE_NAME",
+              AttributeType: "S",
+            },
+            {
+              AttributeName: "APPLIED_AT",
+              AttributeType: "S",
+            },
+          ],
+          KeySchema: [
+            {
+              AttributeName: "FILE_NAME",
+              KeyType: "HASH",
+            },
+            {
+              AttributeName: "APPLIED_AT",
+              KeyType: "RANGE",
+            },
+          ],
+          BillingMode: "PAY_PER_REQUEST",
+          TableName: this.tableName,
+          StreamSpecification: {
+            StreamEnabled: false,
           },
-          {
-            AttributeName: "APPLIED_AT",
-            AttributeType: "S",
-          },
-        ],
-        KeySchema: [
-          {
-            AttributeName: "FILE_NAME",
-            KeyType: "HASH",
-          },
-          {
-            AttributeName: "APPLIED_AT",
-            KeyType: "RANGE",
-          },
-        ],
-        BillingMode: "PAY_PER_REQUEST",
-        TableName: this.tableName,
-        StreamSpecification: {
-          StreamEnabled: false,
-        },
-      }),
-    );
+        }),
+      );
+    } catch (error) {
+      if (!isErrorNamed(error, "ResourceInUseException")) {
+        throw error;
+      }
+    }
 
     await this.waitUntilActive();
   }
@@ -132,12 +142,14 @@ export class MigrationLogRepository {
       );
 
       migrations.push(
-        ...(response.Items ?? []).map((item) => {
-          return {
-            FILE_NAME: item.FILE_NAME?.S,
-            APPLIED_AT: item.APPLIED_AT?.S,
-          };
-        }),
+        ...(response.Items ?? [])
+          .filter((item) => item.FILE_NAME?.S !== MIGRATIONS_LOCK_KEY)
+          .map((item) => {
+            return {
+              FILE_NAME: item.FILE_NAME?.S,
+              APPLIED_AT: item.APPLIED_AT?.S,
+            };
+          }),
       );
 
       exclusiveStartKey = response.LastEvaluatedKey;
@@ -165,6 +177,107 @@ export class MigrationLogRepository {
   }
 }
 
+/**
+ * Lease-based lock stored as a row in the migration log table. A heartbeat keeps
+ * the lease alive during long migrations; a crashed run's lock expires after one lease.
+ */
+export class MigrationLock {
+  private readonly owner = randomUUID();
+  private readonly key = {
+    FILE_NAME: { S: MIGRATIONS_LOCK_KEY },
+    APPLIED_AT: { S: MIGRATIONS_LOCK_KEY },
+  };
+  private heartbeat?: NodeJS.Timeout;
+  private lost = false;
+
+  constructor(
+    private readonly ddb: DynamoDBClient,
+    private readonly tableName = MIGRATIONS_LOG_TABLE_NAME,
+    private readonly leaseMs = MIGRATIONS_LOCK_LEASE_MS,
+  ) {}
+
+  async acquire() {
+    const now = Date.now();
+    try {
+      await this.ddb.send(
+        new PutItemCommand({
+          TableName: this.tableName,
+          Item: {
+            ...this.key,
+            LOCK_OWNER: { S: this.owner },
+            LOCK_EXPIRES_AT: { N: String(now + this.leaseMs) },
+          },
+          ConditionExpression: "attribute_not_exists(FILE_NAME) OR LOCK_EXPIRES_AT < :now",
+          ExpressionAttributeValues: { ":now": { N: String(now) } },
+        }),
+      );
+    } catch (error) {
+      if (isErrorNamed(error, "ConditionalCheckFailedException")) {
+        throw new Error(
+          `Another dynamark run holds the migration lock. Wait for it to finish; a lock left by a crashed run expires within ${this.leaseMs / 1000} seconds.`,
+        );
+      }
+      throw error;
+    }
+
+    this.heartbeat = setInterval(() => void this.renew(), this.leaseMs / 3);
+    this.heartbeat.unref();
+  }
+
+  assertHeld() {
+    if (this.lost) {
+      throw new Error(
+        "Lost the migration lock to another run; stopping before the next migration.",
+      );
+    }
+  }
+
+  async release() {
+    clearInterval(this.heartbeat);
+    try {
+      await this.ddb.send(
+        new DeleteItemCommand({
+          TableName: this.tableName,
+          Key: this.key,
+          ConditionExpression: "LOCK_OWNER = :owner",
+          ExpressionAttributeValues: { ":owner": { S: this.owner } },
+        }),
+      );
+    } catch (error) {
+      if (!isErrorNamed(error, "ConditionalCheckFailedException")) {
+        console.warn(`Could not release migration lock: ${(error as Error).message}`);
+      }
+    }
+  }
+
+  private async renew() {
+    try {
+      await this.ddb.send(
+        new UpdateItemCommand({
+          TableName: this.tableName,
+          Key: this.key,
+          UpdateExpression: "SET LOCK_EXPIRES_AT = :expiresAt",
+          ConditionExpression: "LOCK_OWNER = :owner",
+          ExpressionAttributeValues: {
+            ":expiresAt": { N: String(Date.now() + this.leaseMs) },
+            ":owner": { S: this.owner },
+          },
+        }),
+      );
+    } catch (error) {
+      if (isErrorNamed(error, "ConditionalCheckFailedException")) {
+        this.lost = true;
+      }
+    }
+  }
+}
+
+export async function acquireMigrationLock(ddb: DynamoDBClient) {
+  const lock = new MigrationLock(ddb);
+  await lock.acquire();
+  return lock;
+}
+
 export async function configureMigrationsLogDbSchema(ddb: DynamoDBClient) {
   return new MigrationLogRepository(ddb).createTable();
 }
@@ -186,6 +299,10 @@ export async function doesMigrationsLogDbExists(ddb: DynamoDBClient) {
 
 export async function getAllMigrations(ddb: DynamoDBClient) {
   return new MigrationLogRepository(ddb).listAll();
+}
+
+function isErrorNamed(error: unknown, name: string) {
+  return error instanceof Error && error.name === name;
 }
 
 function getProfileConfig(inputProfile: string, awsConfig: AwsProfileConfig[]) {

@@ -1,4 +1,5 @@
 import { writeFileSync } from "node:fs";
+import path from "node:path";
 import {
   CreateTableCommand,
   DeleteItemCommand,
@@ -102,6 +103,51 @@ describe("migrationsDb", () => {
     });
   });
 
+  it("tolerates another run creating the migration log table first", async () => {
+    const ddb = fakeDdb((command) => {
+      if (command instanceof CreateTableCommand) {
+        throw Object.assign(new Error("Table already exists"), { name: "ResourceInUseException" });
+      }
+      return { Table: { TableStatus: "ACTIVE" } };
+    });
+
+    await expect(configureMigrationsLogDbSchema(ddb)).resolves.toBeUndefined();
+  });
+
+  describe("credentials when the config has no keys", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("uses env var credentials for the default profile, as CI runners provide them", async () => {
+      await withTempCwd(async () => {
+        writeProfileConfig("");
+        isolateSharedAwsFiles("/nonexistent/credentials");
+        vi.stubEnv("AWS_ACCESS_KEY_ID", "env-key");
+        vi.stubEnv("AWS_SECRET_ACCESS_KEY", "env-secret");
+
+        const ddb = await getDdb();
+
+        await expect(ddb.config.credentials()).resolves.toMatchObject({ accessKeyId: "env-key" });
+      });
+    });
+
+    it("uses a named profile from the shared credentials file", async () => {
+      await withTempCwd(async () => {
+        writeProfileConfig("dev");
+        writeFileSync(
+          "credentials",
+          "[dev]\naws_access_key_id = dev-key\naws_secret_access_key = dev-secret\n",
+        );
+        isolateSharedAwsFiles(path.join(process.cwd(), "credentials"));
+
+        const ddb = await getDdb("dev");
+
+        await expect(ddb.config.credentials()).resolves.toMatchObject({ accessKeyId: "dev-key" });
+      });
+    });
+  });
+
   it("exposes a repository adapter for migration log storage", async () => {
     const sentCommands: unknown[] = [];
     const repository = new MigrationLogRepository(
@@ -118,6 +164,23 @@ describe("migrationsDb", () => {
     expect(sentCommands[1]).toBeInstanceOf(DeleteItemCommand);
   });
 });
+
+function writeProfileConfig(profile: string) {
+  writeFileSync(
+    "dynamark.config.json",
+    JSON.stringify({
+      awsConfig: [{ profile, region: "us-west-2" }],
+      migrationsDir: "migrations",
+      migrationType: "ts",
+    }),
+  );
+}
+
+function isolateSharedAwsFiles(credentialsFile: string) {
+  vi.stubEnv("AWS_PROFILE", undefined);
+  vi.stubEnv("AWS_SHARED_CREDENTIALS_FILE", credentialsFile);
+  vi.stubEnv("AWS_CONFIG_FILE", "/nonexistent/config");
+}
 
 function fakeDdb(handler: (command: unknown) => unknown): DynamoDBClient {
   return {

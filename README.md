@@ -19,6 +19,12 @@ npm install -g dynamark
 dynamark --help
 ```
 
+Migration files import the AWS SDK, so install it in the project that holds your migrations too:
+
+```bash
+npm install @aws-sdk/client-dynamodb
+```
+
 ## Create a Migration Project
 
 ```bash
@@ -49,7 +55,7 @@ The generated `dynamark.config.json` starts as:
 }
 ```
 
-For real AWS, leave `endpoint`, `accessKeyId`, and `secretAccessKey` blank if you want Dynamark to load credentials from the selected AWS profile.
+For real AWS, leave `endpoint`, `accessKeyId`, and `secretAccessKey` blank and Dynamark uses the standard AWS credential chain: env vars, `~/.aws` profiles, SSO, GitHub Actions OIDC, and ECS/EC2 roles. Pass `--profile <name>` (or set `AWS_PROFILE`) to pick a named profile.
 
 ## Run Against DynamoDB Local
 
@@ -149,6 +155,16 @@ dynamark down --shift 1
 ```
 
 `dynamark up` creates `MIGRATIONS_LOG_DB` automatically if it does not exist. That table stores the migration filename and applied timestamp.
+
+`--shift` takes a whole number of migrations to roll back. `--shift 0` rolls back everything.
+
+Only files with the configured `migrationType` extension count as migrations, so files like `.gitkeep` or `README.md` in the migrations directory are ignored.
+
+## Running Safely in Production
+
+**One run at a time.** `up` and `down` take a lock (a row in `MIGRATIONS_LOG_DB`) before reading what's pending. If two deploys start together, the second fails fast with "Another dynamark run holds the migration lock". The lock renews itself while a run is in progress, and a lock left by a crashed run expires within 60 seconds.
+
+**Write migrations that are safe to run twice.** DynamoDB can't wrap your migration and its log entry in one transaction. Dynamark runs `up()` first and then writes the log row, so if that write fails, the migration runs again next time. Use condition expressions (for example `attribute_not_exists`) or check-before-write so a second run is harmless.
 
 ## Migration Run History
 

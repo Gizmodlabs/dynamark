@@ -57,7 +57,6 @@
   ],
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1064.0",
-    "@aws-sdk/credential-provider-ini": "^3.972.51",
     "cli-table3": "^0.6.5",
     "commander": "^15.0.0",
     "tsx": "^4.22.4",

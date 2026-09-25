@@ -40,6 +40,19 @@ describe("migrationsDir", () => {
     });
   });
 
+  it("ignores files that do not match the configured migration type", async () => {
+    await withTempCwd(() => {
+      writeConfig("migrations");
+      mkdirSync("migrations");
+      writeFileSync("migrations/.gitkeep", "");
+      writeFileSync("migrations/.DS_Store", "");
+      writeFileSync("migrations/README.md", "");
+      writeFileSync("migrations/1-first.ts", "");
+
+      expect(getFileNamesInMigrationFolder()).toEqual(["1-first.ts"]);
+    });
+  });
+
   it("loads TypeScript migration files through the configured loader strategy", async () => {
     await withTempCwd(async () => {
       writeConfig("migrations");

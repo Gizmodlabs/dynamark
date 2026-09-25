@@ -1,3 +1,4 @@
+import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import * as historyDir from "../env/historyDir.js";
 import * as migrationsDb from "../env/migrationsDb.js";
 import * as migrationsDir from "../env/migrationsDir.js";
@@ -14,6 +15,19 @@ export async function up(profile = "default") {
     await migrationsDb.configureMigrationsLogDbSchema(ddb);
   }
 
+  const lock = await migrationsDb.acquireMigrationLock(ddb);
+  try {
+    return await migratePending(ddb, profile, lock);
+  } finally {
+    await lock.release();
+  }
+}
+
+async function migratePending(
+  ddb: DynamoDBClient,
+  profile: string,
+  lock: migrationsDb.MigrationLock,
+) {
   const statusItems = await status(profile);
   const pendingItems = statusItems.filter((item) => item.appliedAt === "PENDING");
   const migrated: string[] = [];
@@ -21,6 +35,7 @@ export async function up(profile = "default") {
 
   for (const item of pendingItems) {
     try {
+      lock.assertHeld();
       await migrateItem(item, migrated);
     } catch (error_) {
       const error = error_ as Error;

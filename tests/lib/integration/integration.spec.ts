@@ -14,6 +14,7 @@ import { history } from "../../../src/lib/actions/history.js";
 import { init } from "../../../src/lib/actions/init.js";
 import { status } from "../../../src/lib/actions/status.js";
 import { up } from "../../../src/lib/actions/up.js";
+import { getAllMigrations } from "../../../src/lib/env/migrationsDb.js";
 import { withTempCwd } from "../../helpers/tempCwd.js";
 
 const require = createRequire(import.meta.url);
@@ -91,6 +92,35 @@ describe("dynamark integration", () => {
       });
       expect(runs[0].runId).toMatch(/^0001_\d{8}T\d{9}Z_up$/);
       expect(runs[1].runId).toMatch(/^0002_\d{8}T\d{9}Z_down$/);
+    });
+  });
+
+  it("applies each migration once when two up runs start at the same time", async () => {
+    await withTempCwd(async () => {
+      await init();
+      writeConfig("ts", endpoint);
+
+      const ddb = buildLocalClient(endpoint);
+      await recreateCustomerTable(ddb);
+      const fileName = await create("concurrent");
+      writeFileSync(`migrations/${fileName}`, tsMigration("customer-concurrent"));
+
+      const results = await Promise.allSettled([up(), up()]);
+
+      const applied = results.flatMap((result) =>
+        result.status === "fulfilled" ? result.value : [],
+      );
+      const errors = results.flatMap((result) =>
+        result.status === "rejected" ? [String(result.reason)] : [],
+      );
+      expect(applied).toEqual([fileName]);
+      for (const error of errors) {
+        expect(error).toContain("holds the migration lock");
+      }
+      const logRows = await getAllMigrations(ddb);
+      expect(logRows.map((row) => row.FILE_NAME)).toEqual([fileName]);
+
+      await down("default", 0);
     });
   });
 });

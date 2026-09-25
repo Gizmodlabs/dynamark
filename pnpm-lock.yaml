@@ -11,9 +11,6 @@ importers:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.1064.0
         version: 3.1064.0
-      '@aws-sdk/credential-provider-ini':
-        specifier: ^3.972.51
-        version: 3.972.51
       cli-table3:
         specifier: ^0.6.5
         version: 0.6.5

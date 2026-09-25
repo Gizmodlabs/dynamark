@@ -7,8 +7,23 @@ import * as migrationsDb from "../../../src/lib/env/migrationsDb.js";
 import { withTempCwd } from "../../helpers/tempCwd.js";
 
 describe("down", () => {
+  beforeEach(() => {
+    vi.spyOn(migrationsDb, "acquireMigrationLock").mockResolvedValue({
+      assertHeld: vi.fn(),
+      release: vi.fn(async () => {}),
+    } as unknown as migrationsDb.MigrationLock);
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it.each([Number.NaN, -1, 1.5])("rejects shift %s before touching DynamoDB", async (shift) => {
+    const getDdb = vi.spyOn(migrationsDb, "getDdb");
+
+    await expect(down("default", shift)).rejects.toThrow("Invalid shift");
+
+    expect(getDdb).not.toHaveBeenCalled();
   });
 
   it("rolls back the latest applied migrations in reverse order", async () => {

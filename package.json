@@ -28,6 +28,7 @@
     "check-types": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run --coverage",
     "test:local:dynamodb": "DYNAMARK_TEST_DDB_LOCAL=1 DYNAMARK_DDB_LOCAL_ENDPOINT=http://localhost:8000 vitest run tests/lib/integration/dynamodbLocal.spec.ts",
+    "mock:dynamodb": "node scripts/local-dynamodb.mjs",
     "test:watch": "vitest",
     "check": "biome check .",
     "check:fix": "biome check --write .",

@@ -218,6 +218,16 @@ pnpm run test:local:dynamodb
 
 The Docker smoke test owns and resets `DYNAMARK_LOCAL_TEST` and `MIGRATIONS_LOG_DB` inside DynamoDB Local.
 
+### Manual Testing Without Docker
+
+```bash
+pnpm run mock:dynamodb
+```
+
+This starts an in-memory DynamoDB mock (Dynalite) on `http://127.0.0.1:8000` and prints a ready-to-paste `dynamark.config.json`. In another terminal, point a scratch project's config at it and run the CLI end to end: `dynamark init`, `create`, `up`, `status`, `down`, `history`. Override the port with `PORT=8123 pnpm run mock:dynamodb`. All data is in-memory and discarded when the process exits.
+
+Note: `ts` migrations are loaded as ES modules, so the project running the CLI needs `"type": "module"` in its `package.json`. `mjs` and `cjs` migrations work regardless.
+
 ## Docs
 
 - [Architecture](docs/architecture.md)

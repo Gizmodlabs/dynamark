@@ -42,6 +42,7 @@ describe("MigrationLock", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await ddb.send(new DeleteItemCommand({ TableName: MIGRATIONS_LOG_TABLE_NAME, Key: lockKey }));
   });
 
@@ -91,6 +92,29 @@ describe("MigrationLock", () => {
     await vi.waitFor(() => expect(() => lock.assertHeld()).toThrow("Lost the migration lock"));
     await lock.release();
     await expect(getLockOwner()).resolves.toBe("other-run");
+  });
+
+  it("stops trusting the lock when renewals fail for a full lease, e.g. missing IAM access", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const send = vi.fn(async (_command: unknown) => {
+      if (send.mock.calls.length === 1) {
+        return {};
+      }
+      throw Object.assign(new Error("not authorized"), { name: "AccessDeniedException" });
+    });
+    const lock = new MigrationLock(
+      { send } as unknown as DynamoDBClient,
+      MIGRATIONS_LOG_TABLE_NAME,
+      300,
+    );
+    await lock.acquire();
+    expect(() => lock.assertHeld()).not.toThrow();
+
+    await vi.waitFor(() => expect(() => lock.assertHeld()).toThrow("Lost the migration lock"));
+
+    expect(send.mock.calls[1][0]).toBeInstanceOf(PutItemCommand);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Could not renew migration lock"));
+    await lock.release();
   });
 
   it("does not list the lock row as an applied migration", async () => {

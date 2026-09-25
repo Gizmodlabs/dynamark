@@ -164,6 +164,22 @@ Only files with the configured `migrationType` extension count as migrations, so
 
 **One run at a time.** `up` and `down` take a lock (a row in `MIGRATIONS_LOG_DB`) before reading what's pending. If two deploys start together, the second fails fast with "Another dynamark run holds the migration lock". The lock renews itself while a run is in progress, and a lock left by a crashed run expires within 60 seconds.
 
+**IAM permissions.** Dynamark needs these actions on the `MIGRATIONS_LOG_DB` table, plus whatever your migrations touch. `CreateTable` is only used on the first run.
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "dynamodb:DescribeTable",
+    "dynamodb:CreateTable",
+    "dynamodb:Scan",
+    "dynamodb:PutItem",
+    "dynamodb:DeleteItem"
+  ],
+  "Resource": "arn:aws:dynamodb:*:*:table/MIGRATIONS_LOG_DB"
+}
+```
+
 **Write migrations that are safe to run twice.** DynamoDB can't wrap your migration and its log entry in one transaction. Dynamark runs `up()` first and then writes the log row, so if that write fails, the migration runs again next time. Use condition expressions (for example `attribute_not_exists`) or check-before-write so a second run is harmless.
 
 ## Migration Run History

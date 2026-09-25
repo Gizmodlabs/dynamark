@@ -8,7 +8,6 @@ import {
   type DynamoDBClientConfig,
   PutItemCommand,
   ScanCommand,
-  UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
 
 import type { AwsProfileConfig, MigrationLogItem, RawMigrationLogItem } from "../types.js";
@@ -189,6 +188,7 @@ export class MigrationLock {
   };
   private heartbeat?: NodeJS.Timeout;
   private lost = false;
+  private expiresAt = 0;
 
   constructor(
     private readonly ddb: DynamoDBClient,
@@ -202,15 +202,12 @@ export class MigrationLock {
       await this.ddb.send(
         new PutItemCommand({
           TableName: this.tableName,
-          Item: {
-            ...this.key,
-            LOCK_OWNER: { S: this.owner },
-            LOCK_EXPIRES_AT: { N: String(now + this.leaseMs) },
-          },
+          Item: this.lockItem(now + this.leaseMs),
           ConditionExpression: "attribute_not_exists(FILE_NAME) OR LOCK_EXPIRES_AT < :now",
           ExpressionAttributeValues: { ":now": { N: String(now) } },
         }),
       );
+      this.expiresAt = now + this.leaseMs;
     } catch (error) {
       if (isErrorNamed(error, "ConditionalCheckFailedException")) {
         throw new Error(
@@ -225,9 +222,9 @@ export class MigrationLock {
   }
 
   assertHeld() {
-    if (this.lost) {
+    if (this.lost || Date.now() >= this.expiresAt) {
       throw new Error(
-        "Lost the migration lock to another run; stopping before the next migration.",
+        "Lost the migration lock (another run took it, or renewals failed for a full lease); stopping before the next migration.",
       );
     }
   }
@@ -250,25 +247,35 @@ export class MigrationLock {
     }
   }
 
+  // Renews with PutItem rather than UpdateItem so the lock needs no IAM action
+  // beyond what the migration log already uses.
   private async renew() {
+    const expiresAt = Date.now() + this.leaseMs;
     try {
       await this.ddb.send(
-        new UpdateItemCommand({
+        new PutItemCommand({
           TableName: this.tableName,
-          Key: this.key,
-          UpdateExpression: "SET LOCK_EXPIRES_AT = :expiresAt",
+          Item: this.lockItem(expiresAt),
           ConditionExpression: "LOCK_OWNER = :owner",
-          ExpressionAttributeValues: {
-            ":expiresAt": { N: String(Date.now() + this.leaseMs) },
-            ":owner": { S: this.owner },
-          },
+          ExpressionAttributeValues: { ":owner": { S: this.owner } },
         }),
       );
+      this.expiresAt = expiresAt;
     } catch (error) {
       if (isErrorNamed(error, "ConditionalCheckFailedException")) {
         this.lost = true;
+      } else {
+        console.warn(`Could not renew migration lock: ${(error as Error).message}`);
       }
     }
+  }
+
+  private lockItem(expiresAt: number) {
+    return {
+      ...this.key,
+      LOCK_OWNER: { S: this.owner },
+      LOCK_EXPIRES_AT: { N: String(expiresAt) },
+    };
   }
 }
 

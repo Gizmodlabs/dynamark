@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import Table from "cli-table3";
-import { Option, program } from "commander";
+import { InvalidArgumentError, Option, program } from "commander";
 
 import {
   createAction,
@@ -46,6 +46,13 @@ function printHistoryTable(runs: MigrationRunRecord[]) {
     ]),
   );
   console.info(table.toString());
+}
+
+function parseShift(value: string) {
+  if (!/^\d+$/.test(value)) {
+    throw new InvalidArgumentError("Must be a whole number. Use 0 to roll back everything.");
+  }
+  return Number.parseInt(value, 10);
 }
 
 const profileOption = new Option(
@@ -107,7 +114,7 @@ program
   .option(
     "--shift <n>",
     "Number of down shift to perform. 0 will rollback all changes",
-    (value) => Number.parseInt(value, 10),
+    parseShift,
     1,
   )
   .description("undo the last applied database migration against a provided profile.")

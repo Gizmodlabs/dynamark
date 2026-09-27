@@ -19,6 +19,12 @@ npm install -g dynamark
 dynamark --help
 ```
 
+Migration files import the AWS SDK, so install it in the project that holds your migrations too:
+
+```bash
+npm install @aws-sdk/client-dynamodb
+```
+
 ## Create a Migration Project
 
 ```bash
@@ -49,7 +55,7 @@ The generated `dynamark.config.json` starts as:
 }
 ```
 
-For real AWS, leave `endpoint`, `accessKeyId`, and `secretAccessKey` blank if you want Dynamark to load credentials from the selected AWS profile.
+For real AWS, leave `endpoint`, `accessKeyId`, and `secretAccessKey` blank and Dynamark uses the standard AWS credential chain: env vars, `~/.aws` profiles, SSO, GitHub Actions OIDC, and ECS/EC2 roles. Pass `--profile <name>` (or set `AWS_PROFILE`) to pick a named profile.
 
 ## Run Against DynamoDB Local
 
@@ -150,6 +156,32 @@ dynamark down --shift 1
 
 `dynamark up` creates `MIGRATIONS_LOG_DB` automatically if it does not exist. That table stores the migration filename and applied timestamp.
 
+`--shift` takes a whole number of migrations to roll back. `--shift 0` rolls back everything.
+
+Only files with the configured `migrationType` extension count as migrations, so files like `.gitkeep` or `README.md` in the migrations directory are ignored.
+
+## Running Safely in Production
+
+**One run at a time.** `up` and `down` take a lock (a row in `MIGRATIONS_LOG_DB`) before reading what's pending. If two deploys start together, the second fails fast with "Another dynamark run holds the migration lock". The lock renews itself while a run is in progress, and a lock left by a crashed run expires within 60 seconds.
+
+**IAM permissions.** Dynamark needs these actions on the `MIGRATIONS_LOG_DB` table, plus whatever your migrations touch. `CreateTable` is only used on the first run.
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "dynamodb:DescribeTable",
+    "dynamodb:CreateTable",
+    "dynamodb:Scan",
+    "dynamodb:PutItem",
+    "dynamodb:DeleteItem"
+  ],
+  "Resource": "arn:aws:dynamodb:*:*:table/MIGRATIONS_LOG_DB"
+}
+```
+
+**Write migrations that are safe to run twice.** DynamoDB can't wrap your migration and its log entry in one transaction. Dynamark runs `up()` first and then writes the log row, so if that write fails, the migration runs again next time. Use condition expressions (for example `attribute_not_exists`) or check-before-write so a second run is harmless.
+
 ## Migration Run History
 
 Every `up` and `down` run that touches at least one migration is recorded locally as files, similar to Drizzle's journal. The history directory defaults to `<migrationsDir>/history` and can be changed with `historyDir` in `dynamark.config.json`.
@@ -217,6 +249,16 @@ pnpm run test:local:dynamodb
 ```
 
 The Docker smoke test owns and resets `DYNAMARK_LOCAL_TEST` and `MIGRATIONS_LOG_DB` inside DynamoDB Local.
+
+### Manual Testing Without Docker
+
+```bash
+pnpm run mock:dynamodb
+```
+
+This starts an in-memory DynamoDB mock (Dynalite) on `http://127.0.0.1:8000` and prints a ready-to-paste `dynamark.config.json`. In another terminal, point a scratch project's config at it and run the CLI end to end: `dynamark init`, `create`, `up`, `status`, `down`, `history`. Override the port with `PORT=8123 pnpm run mock:dynamodb`. All data is in-memory and discarded when the process exits.
+
+Note: `ts` migrations are loaded as ES modules, so the project running the CLI needs `"type": "module"` in its `package.json`. `mjs` and `cjs` migrations work regardless.
 
 ## Docs
 

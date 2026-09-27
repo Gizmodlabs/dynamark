@@ -6,10 +6,30 @@ import type { MigrationStatusItem } from "../types.js";
 import { status } from "./status.js";
 
 export async function down(profile = "default", downShift = 1) {
+  if (!Number.isInteger(downShift) || downShift < 0) {
+    throw new Error(
+      `Invalid shift "${downShift}": use a whole number of migrations to roll back, or 0 for all`,
+    );
+  }
+
+  const ddb = await migrationsDb.getDdb(profile);
+  const lock = await migrationsDb.acquireMigrationLock(ddb);
+  try {
+    return await rollback(ddb, profile, downShift, lock);
+  } finally {
+    await lock.release();
+  }
+}
+
+async function rollback(
+  ddb: DynamoDBClient,
+  profile: string,
+  downShift: number,
+  lock: migrationsDb.MigrationLock,
+) {
   const downgraded: string[] = [];
   const statusItems = await status(profile);
   const appliedItems = statusItems.filter((item) => item.appliedAt !== "PENDING");
-  const ddb = await migrationsDb.getDdb(profile);
   const itemsToRollback = appliedItems
     .slice(-(downShift === 0 ? appliedItems.length : downShift))
     .reverse();
@@ -17,6 +37,7 @@ export async function down(profile = "default", downShift = 1) {
 
   for (const item of itemsToRollback) {
     try {
+      lock.assertHeld();
       await executeDown(ddb, item);
     } catch (error_) {
       const error = error_ as Error;

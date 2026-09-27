@@ -55,13 +55,17 @@ sequenceDiagram
     Repo->>DDB: CreateTable PAY_PER_REQUEST
     Repo->>DDB: wait until ACTIVE
   end
+  CLI->>Repo: acquire lock row (conditional put, heartbeat renews lease)
   CLI->>Repo: read applied migrations
   CLI->>Loader: import pending file
   Loader->>Migration: expose up/down functions
   CLI->>Migration: up(ddb)
   CLI->>Repo: write migration log row
   CLI->>CLI: append run record to history journal
+  CLI->>Repo: release lock row
 ```
+
+`down` takes the same lock. The lock is a lease: a crashed run's lock expires after 60 seconds, and a run that loses its lease stops before starting its next migration.
 
 ## Down Flow
 

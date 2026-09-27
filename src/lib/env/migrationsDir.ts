@@ -27,8 +27,9 @@ export function getFileNamesInMigrationFolder() {
     );
   }
 
+  const extension = getFileLoader().configExtension;
   return readdirSync(migrationsDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile())
+    .filter((entry) => entry.isFile() && entry.name.endsWith(extension))
     .map((entry) => entry.name)
     .sort();
 }

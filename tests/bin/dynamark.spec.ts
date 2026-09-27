@@ -23,4 +23,13 @@ describe("dynamark bin", () => {
     expect(stdout).toContain("history");
     expect(stdout).toContain("record of past migration runs");
   });
+
+  it.each(["abc", "1abc", "1.5"])("rejects down --shift %s", async (shift) => {
+    const tsxCli = path.join(process.cwd(), "node_modules/tsx/dist/cli.mjs");
+    const dynamarkBin = path.join(process.cwd(), "src/bin/dynamark.ts");
+
+    await expect(
+      execFileAsync(process.execPath, [tsxCli, dynamarkBin, "down", "--shift", shift]),
+    ).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining("Must be a whole number") });
+  });
 });
